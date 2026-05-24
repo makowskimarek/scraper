@@ -394,6 +394,9 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const czas     = esc(getKol(row, idx, 'czas brutto', 'brutto', 'czas netto', 'netto') || '?');
             linie.push(`<strong class="winner">    ★ Msc ${msc}: ${zawodnik}  |  Kategoria: ${kat}  |  Czas: ${czas}</strong>`);
         });
+        wyniki.top3Msc.forEach(row =>
+            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
+        );
         linie.push('');
     }
 
@@ -408,6 +411,9 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const line = `    ${isTop3 ? '★ ' : '  '}${zawodnik}  |  Kategoria: ${kat}  |  Mkat: ${mkat}`;
             linie.push(isTop3 ? `<strong class="winner">${line}</strong>` : line);
         });
+        wyniki.mastersMTop3.forEach(row =>
+            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
+        );
         linie.push('');
     }
 
@@ -421,6 +427,9 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const line = `    ${isTop3 ? '★ ' : '  '}${zawodnik}  |  Kategoria: ${kat}  |  Mkat: ${mkat}`;
             linie.push(isTop3 ? `<strong class="winner">${line}</strong>` : line);
         });
+        wyniki.mastersKTop3.forEach(row =>
+            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
+        );
         linie.push('');
     }
 
@@ -558,6 +567,8 @@ function analizujDruzyne(doc) {
             const line = `  ${z.name.padEnd(maxName + 2)}│ ${z.czas}`;
             linie.push(`<strong class="winner">${esc(line)}</strong>`);
         });
+        linie.push('');
+        zawodnicy.forEach(z => linie.push(`  ${esc(z.name)}`));
     }
 
     linie.push('');
