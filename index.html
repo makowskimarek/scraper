@@ -394,9 +394,11 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const czas     = esc(getKol(row, idx, 'czas brutto', 'brutto', 'czas netto', 'netto') || '?');
             linie.push(`<strong class="winner">    ★ Msc ${msc}: ${zawodnik}  |  Kategoria: ${kat}  |  Czas: ${czas}</strong>`);
         });
-        wyniki.top3Msc.forEach(row =>
-            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
-        );
+        linie.push(`  ${tytul}:`);
+        wyniki.top3Msc.forEach(row => {
+            const medal = {'1':'🥇','2':'🥈','3':'🥉'}[getKol(row, idx, 'msc', 'miejsce').trim()] || '';
+            linie.push(`  ${medal} ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`);
+        });
         linie.push('');
     }
 
@@ -411,9 +413,11 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const line = `    ${isTop3 ? '★ ' : '  '}${zawodnik}  |  Kategoria: ${kat}  |  Mkat: ${mkat}`;
             linie.push(isTop3 ? `<strong class="winner">${line}</strong>` : line);
         });
-        wyniki.mastersMTop3.forEach(row =>
-            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
-        );
+        linie.push('  Elite Masters Mężczyzn:');
+        wyniki.mastersMTop3.forEach(row => {
+            const medal = {'1':'🥇','2':'🥈','3':'🥉'}[getKol(row, idx, 'mkat').trim()] || '';
+            linie.push(`  ${medal} ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`);
+        });
         linie.push('');
     }
 
@@ -427,9 +431,11 @@ function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
             const line = `    ${isTop3 ? '★ ' : '  '}${zawodnik}  |  Kategoria: ${kat}  |  Mkat: ${mkat}`;
             linie.push(isTop3 ? `<strong class="winner">${line}</strong>` : line);
         });
-        wyniki.mastersKTop3.forEach(row =>
-            linie.push(`  ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`)
-        );
+        linie.push('  Elite Masters Kobiet:');
+        wyniki.mastersKTop3.forEach(row => {
+            const medal = {'1':'🥇','2':'🥈','3':'🥉'}[getKol(row, idx, 'mkat').trim()] || '';
+            linie.push(`  ${medal} ${esc(getKol(row, idx, 'zawodnik', 'name') || '?')}`);
+        });
         linie.push('');
     }
 
@@ -568,7 +574,9 @@ function analizujDruzyne(doc) {
             linie.push(`<strong class="winner">${esc(line)}</strong>`);
         });
         linie.push('');
-        zawodnicy.forEach(z => linie.push(`  ${esc(z.name)}`));
+        linie.push('  Drużynowa Elite:');
+        const medalDruz = {'1':'🥇','2':'🥈','3':'🥉'}[mscTxt.trim()] || '';
+        zawodnicy.forEach(z => linie.push(`  ${medalDruz} ${esc(z.name)}`));
     }
 
     linie.push('');
