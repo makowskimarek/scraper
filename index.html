@@ -29,6 +29,9 @@
         #fetchBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
         #downloadBtn { background: #1a7a1a; color: #fff; display: none; }
         #downloadBtn:hover { background: #145a14; }
+        #retryBtn { background: #cc8800; color: #fff; display: none; }
+        #retryBtn:hover { background: #aa7000; }
+        #retryBtn:disabled { background: #444; color: #888; cursor: not-allowed; }
         #status { color: #999; font-size: 13px; }
         #report {
             font-family: 'Consolas', 'Courier New', monospace;
@@ -95,6 +98,7 @@
 
     <div class="controls">
         <button id="fetchBtn" onclick="generujRaport()">▶ Generuj raport</button>
+        <button id="retryBtn" onclick="retryBledne()">↩ Spróbuj ponownie</button>
         <button id="downloadBtn" onclick="pobierzPlik()">⬇ Zapisz jako TXT</button>
         <span id="status"></span>
     </div>
@@ -104,7 +108,7 @@
     <pre id="report">Kliknij "Generuj raport" aby pobrać i przetworzyć wyniki ze wszystkich stron.</pre>
 
 <script>
-const PROXY = 'https://api.allorigins.win/get?url=';
+const PROXY = '/api/proxy?url=';
 
 // Wypełniane dynamicznie przed każdym raportem
 let STRONY        = [];
@@ -166,6 +170,8 @@ function dodajEtap(klucz, tytul) {
 }
 
 let raportTekst = '';
+let docsMap = {};
+let nagłówekLinie = [];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -209,19 +215,22 @@ async function fetchRaw(url, onStatus) {
                 onStatus('loading', `pobieranie (próba ${proba}/${MAX_RETRIES})...`);
             }
             const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 5000);
+            const timer = setTimeout(() => ctrl.abort(), 15000);
             let resp;
             try {
                 resp = await fetch(PROXY + encodeURIComponent(url), { signal: ctrl.signal });
             } finally {
                 clearTimeout(timer);
             }
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            if (!data.contents || data.contents.trim().length < 100)
-                throw new Error('pusta lub niepełna odpowiedź proxy');
-            onStatus('ok', `OK (${Math.round(data.contents.length / 1024)} KB)`);
-            return data.contents;
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+                throw new Error(err.error || `HTTP ${resp.status}`);
+            }
+            const html = await resp.text();
+            if (!html || html.trim().length < 100)
+                throw new Error('pusta lub niepełna odpowiedź');
+            onStatus('ok', `OK (${Math.round(html.length / 1024)} KB)`);
+            return html;
         } catch (e) {
             ostatniBlad = e;
             if (proba === MAX_RETRIES) {
@@ -354,7 +363,7 @@ function formatWiersz(row, idx, kolumny) {
     }).join('  ');
 }
 
-function sekcjaKlub(tytul, wyniki, idx) {
+function sekcjaKlub(tytul, wyniki, idx, wyrozniaj = true) {
     const linie = [];
     const KOL_OSOBA = [
         ['Msc',      'msc', 'miejsce', 'place'],
@@ -376,7 +385,7 @@ function sekcjaKlub(tytul, wyniki, idx) {
     linie.push('');
 
     // Top 3 ogólnie (Msc 1-3)
-    if (wyniki.top3Msc.length) {
+    if (wyrozniaj && wyniki.top3Msc.length) {
         linie.push('  TOP 3 ogólnie:');
         wyniki.top3Msc.forEach(row => {
             const msc      = esc(getKol(row, idx, 'msc', 'miejsce') || '?');
@@ -389,7 +398,7 @@ function sekcjaKlub(tytul, wyniki, idx) {
     }
 
     // Elite Masters top 3 Mkat
-    if (wyniki.mastersMTop3.length) {
+    if (wyrozniaj && wyniki.mastersMTop3.length) {
         linie.push('  TOP 3 Mkat – Elite Masters Mężczyzn:');
         wyniki.mastersMTop3.forEach(row => {
             const zawodnik = esc(getKol(row, idx, 'zawodnik', 'name') || '?');
@@ -402,7 +411,7 @@ function sekcjaKlub(tytul, wyniki, idx) {
         linie.push('');
     }
 
-    if (wyniki.mastersKTop3.length) {
+    if (wyrozniaj && wyniki.mastersKTop3.length) {
         linie.push('  TOP 3 Mkat – Elite Masters Kobiet:');
         wyniki.mastersKTop3.forEach(row => {
             const zawodnik = esc(getKol(row, idx, 'zawodnik', 'name') || '?');
@@ -427,7 +436,7 @@ function sekcjaKlub(tytul, wyniki, idx) {
     linie.push('  ' + esc(sepLine));
     wyniki.carboni.forEach(row => {
         const mkat   = getKol(row, idx, 'mkat').trim();
-        const isTop3 = /^[123]$/.test(mkat);
+        const isTop3 = wyrozniaj && /^[123]$/.test(mkat);
         const cells  = KOL_OSOBA.map(([, ...aliasy], i) => pad(esc(getKol(row, idx, ...aliasy)), szerokosci[i]));
         const line   = '  ' + cells.join(' │ ');
         linie.push(isTop3 ? `<strong class="winner">${line}</strong>` : line);
@@ -556,6 +565,84 @@ function analizujDruzyne(doc) {
     return linie.join('\n');
 }
 
+// ─── Render i retry ───────────────────────────────────────────────────────────
+
+function renderRaport() {
+    const linie = [...nagłówekLinie];
+
+    for (const strona of STRONY) {
+        const doc = docsMap[strona.klucz];
+        if (!doc) {
+            linie.push(esc(`[BŁĄD: nie pobrano ${strona.tytul}]`));
+            linie.push('');
+            continue;
+        }
+
+        if (strona.klucz === 'druzyna') {
+            linie.push(analizujDruzyne(doc));
+            linie.push('');
+            continue;
+        }
+
+        const tabela = parsujTabelę(doc);
+        if (!tabela) {
+            linie.push(esc(`[Nie znaleziono tabeli: ${strona.tytul}]`));
+            linie.push('');
+            continue;
+        }
+
+        const analiza = analizujStroneKlub(tabela);
+        linie.push(sekcjaKlub(strona.tytul, analiza, tabela.idx, strona.klucz !== 'glowna'));
+        linie.push('');
+    }
+
+    linie.push('─'.repeat(66));
+    linie.push('Źródła danych:');
+    STRONY.forEach(s => linie.push(esc(`  ${s.tytul}: ${s.url}`)));
+
+    const raportHtml = linie.join('\n');
+    raportTekst = raportHtml.replace(/<[^>]+>/g, '');
+    document.getElementById('report').innerHTML = raportHtml;
+    document.getElementById('downloadBtn').style.display = 'inline-block';
+
+    const bledow = STRONY.filter(s => document.getElementById(`etap-${s.klucz}`)?.classList.contains('error')).length;
+    document.getElementById('retryBtn').style.display = bledow ? 'inline-block' : 'none';
+    setStatus(bledow
+        ? `⚠ Gotowe z błędami (${bledow}/${STRONY.length} nieudanych) – ${new Date().toLocaleTimeString('pl-PL')}`
+        : `✓ Gotowe – ${new Date().toLocaleTimeString('pl-PL')}`);
+}
+
+async function retryBledne() {
+    const sfailowane = STRONY.filter(s =>
+        document.getElementById(`etap-${s.klucz}`)?.classList.contains('error')
+    );
+    if (!sfailowane.length) return;
+
+    const fetchBtn  = document.getElementById('fetchBtn');
+    const retryBtn  = document.getElementById('retryBtn');
+    fetchBtn.disabled = true;
+    retryBtn.disabled = true;
+
+    setStatus(`Ponawianie ${sfailowane.length} nieudanych requestów...`, true);
+
+    await Promise.allSettled(sfailowane.map(async s => {
+        try {
+            if (s.klucz === 'glowna') {
+                const html = await fetchRaw(s.url, (stan, msg) => setEtap('glowna', stan, msg));
+                docsMap['glowna'] = new DOMParser().parseFromString(html, 'text/html');
+            } else {
+                docsMap[s.klucz] = await fetchStrona(s.url, s.klucz);
+            }
+        } catch {
+            docsMap[s.klucz] = null;
+        }
+    }));
+
+    renderRaport();
+    fetchBtn.disabled = false;
+    retryBtn.disabled = false;
+}
+
 // ─── Główna funkcja ────────────────────────────────────────────────────────────
 
 async function generujRaport() {
@@ -568,6 +655,7 @@ async function generujRaport() {
     const btn = document.getElementById('fetchBtn');
     btn.disabled = true;
     document.getElementById('downloadBtn').style.display = 'none';
+    document.getElementById('retryBtn').style.display = 'none';
     document.getElementById('report').textContent = '';
     document.getElementById('stages').style.display = 'none';
     document.getElementById('stages').innerHTML = '';
@@ -581,12 +669,13 @@ async function generujRaport() {
     initStages();
     setStatus('Krok 1/2: pobieranie wyników ogólnych...', true);
 
-    const linie = [];
-    linie.push('═'.repeat(66));
-    linie.push(esc(`  ${document.title.toUpperCase()} – RAPORT`));
-    linie.push(`  Wygenerowano: ${new Date().toLocaleString('pl-PL')}`);
-    linie.push('═'.repeat(66));
-    linie.push('');
+    nagłówekLinie = [
+        '═'.repeat(66),
+        esc(`  ${document.title.toUpperCase()} – RAPORT`),
+        `  Wygenerowano: ${new Date().toLocaleString('pl-PL')}`,
+        '═'.repeat(66),
+        '',
+    ];
 
     try {
         // ── Krok 1: pobierz stronę główną i wyciągnij z niej linki do elite ──
@@ -613,7 +702,7 @@ async function generujRaport() {
         // ── Krok 2: pobierz pozostałe strony równolegle ──
         setStatus('Krok 2/2: pobieranie kategorii...', true);
 
-        const docsMap = { glowna: new DOMParser().parseFromString(glowaHtml, 'text/html') };
+        docsMap = { glowna: new DOMParser().parseFromString(glowaHtml, 'text/html') };
 
         await Promise.allSettled(
             STRONY.filter(s => s.klucz !== 'glowna').map(async s => {
@@ -625,49 +714,7 @@ async function generujRaport() {
             })
         );
 
-        // ── Generuj raport w posortowanej kolejności ──
-        for (const strona of STRONY) {
-            const doc = docsMap[strona.klucz];
-            if (!doc) {
-                linie.push(esc(`[BŁĄD: nie pobrano ${strona.tytul}]`));
-                linie.push('');
-                continue;
-            }
-
-            if (strona.klucz === 'druzyna') {
-                linie.push(analizujDruzyne(doc));
-                linie.push('');
-                continue;
-            }
-
-            const tabela = parsujTabelę(doc);
-            if (!tabela) {
-                linie.push(esc(`[Nie znaleziono tabeli: ${strona.tytul}]`));
-                linie.push('');
-                continue;
-            }
-
-            if (false) {
-            } else {
-                const analiza = analizujStroneKlub(tabela);
-                linie.push(sekcjaKlub(strona.tytul, analiza, tabela.idx));
-            }
-            linie.push('');
-        }
-
-        linie.push('─'.repeat(66));
-        linie.push('Źródła danych:');
-        STRONY.forEach(s => linie.push(esc(`  ${s.tytul}: ${s.url}`)));
-
-        const raportHtml = linie.join('\n');
-        raportTekst = raportHtml.replace(/<[^>]+>/g, '');
-        document.getElementById('report').innerHTML = raportHtml;
-        document.getElementById('downloadBtn').style.display = 'inline-block';
-
-        const bledow = STRONY.filter(s => document.getElementById(`etap-${s.klucz}`)?.classList.contains('error')).length;
-        setStatus(bledow
-            ? `⚠ Gotowe z błędami (${bledow}/${STRONY.length} nieudanych) – ${new Date().toLocaleTimeString('pl-PL')}`
-            : `✓ Gotowe – ${new Date().toLocaleTimeString('pl-PL')}`);
+        renderRaport();
 
     } catch (e) {
         setStatus('');
